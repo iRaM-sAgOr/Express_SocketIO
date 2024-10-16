@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f7fa;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1,
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .login {
+      display: inline-block;
+      margin: 10px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .login:hover {
+      background-color: #45a049;
+    }
+
+    .header {
+      background-color: #008cba;
+      color: white;
+      padding: 10px 0;
+      text-align: center;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      overflow: hidden;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      background-color: white;
+      padding: 20px;
+    }
+
+    input[type="text"],
+    input[type="button"] {
+      padding: 10px;
+      margin: 10px 0;
+      width: calc(100% - 22px);
+      box-sizing: border-box;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 10px 20px;
+      background-color: #0288D1;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #0277bd;
+    }
+
+    .user-column {
+      border: 1px solid #eee;
+      padding: 10px;
+      margin: 10px;
+      width: calc(100% / 3 - 30px);
+      display: inline-block;
+      vertical-align: top;
+      border-radius: 4px;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+      background-color: #fafafa;
+    }
+
+    .messages {
+      list-style-type: none;
+      padding: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      border-top: 1px solid #eee;
+      margin-top: 10px;
+      padding-top: 10px;
+    }
+
+    .messages li {
+      padding: 5px 10px;
+      margin-bottom: 4px;
+      background-color: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    .active-user {
+      font-weight: bold;
+      color: #008cba;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+  <div class="container">
+    <div id="loginSection">
+      <h1 class="header">Welcome to Chat App</h1>
+      <p>You are not logged in. Please choose an option.</p>
+      <button class="login" onclick="connectToChat(true)">Login</button>
+      <button class="login" onclick="connectToChat(false)">Join as Guest</button>
+    </div>
+
+    <header id="userDetails" class="hidden header">
+      <h1>Your ID: <span id="myId"></span></h1>
+    </header>
+
+    <div id="chatSection" class="hidden container">
+      <div>
+        <h2 id="globalChatHeader">Global Chat</h2>
+        <input type="text" id="publicMsg" placeholder="Type a message" />
+        <button onclick="sendPublicMessage()">Send</button>
+        <ul id="publicMessages" class="messages"></ul>
+      </div>
+
+      <div>
+        <h2>Connected Users</h2>
+        <ul id="userList"></ul>
+      </div>
+
+      <div>
+        <h2 id="oneToOneChatHeader">One To One Chat (Click any User to chat with)</h2>
+        <input type="text" id="selectedUser" placeholder="Recipient" readonly />
+        <input type="text" id="privateMsg" placeholder="Type a private message" />
+        <button onclick="sendPrivateMessage()">Send</button>
+      </div>
+
+      <div id="chatColumns">
+        <!-- Dynamic message columns will be added here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket;
+    let token;
+    let currentRecipient = null;
+    const messageColumns = {};
+
+    function connectToChat(authenticated) {
+      if (authenticated) {
+        fetch('http://localhost:3001/generate-token', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        })
+          .then(response => response.json())
+          .then(data => {
+            token = data.token;
+            connectSocket('/auth', { token: token });
+            document.getElementById('globalChatHeader').textContent = 'Private Global Chat';
+            document.getElementById('oneToOneChatHeader').textContent = 'Private One To One Chat (Click any User to chat with)';
+          })
+          .catch(error => {
+            console.error('Error logging in:', error);
+            alert('Login failed, please try again.');
+          });
+      } else {
+        connectSocket('/guest', {});
+        document.getElementById('globalChatHeader').textContent = 'Public Global Chat';
+        document.getElementById('oneToOneChatHeader').textContent = 'Public One To One Chat (Click any User to chat with)';
+      }
+    }
+
+    function connectSocket(namespace, auth) {
+      socket = io(`http://localhost:3001${namespace}`, { auth });
+
+      initializeSocketListeners();
+
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('userDetails').classList.remove('hidden');
+      document.getElementById('chatSection').classList.remove('hidden');
+    }
+
+    function initializeSocketListeners() {
+      socket.on('connect', () => {
+        document.getElementById('myId').textContent = socket.id;
+      });
+
+      socket.on('user list', (users) => {
+        const userList = document.getElementById('userList');
+        userList.innerHTML = '';
+        for (const [id, name] of Object.entries(users)) {
+          if (id !== socket.id) {
+            const item = document.createElement('li');
+            item.textContent = name;
+            item.dataset.userId = id;
+            item.onclick = () => selectUser(item);
+            if (id === currentRecipient) {
+              item.classList.add('active-user');
+            }
+            userList.appendChild(item);
+          }
+        }
+      });
+
+      socket.on('public message', (data) => {
+        const item = document.createElement('li');
+        item.textContent = `${data.userId}: ${data.message}`;
+        document.getElementById('publicMessages').appendChild(item);
+      });
+
+      socket.on('private message', (data) => {
+        const userKey = [data.from, socket.id].sort().join('-');
+        let column = messageColumns[userKey];
+        if (!column) {
+          column = document.createElement('div');
+          column.classList.add('user-column');
+          column.innerHTML = `<h3>Chat with ${data.from === socket.id ? data.to : data.from}</h3><ul class="messages"></ul>`;
+          document.getElementById('chatColumns').appendChild(column);
+
+          messageColumns[userKey] = column.querySelector('.messages');
+        }
+
+        addMessageToColumn(data.from, data.to, data.message, new Date(), messageColumns[userKey]);
+      });
+    }
+
+    function selectUser(item) {
+      currentRecipient = item.dataset.userId;
+      document.getElementById('selectedUser').value = item.textContent;
+      const userListItems = document.querySelectorAll('#userList li');
+      userListItems.forEach((li) => li.classList.remove('active-user'));
+      item.classList.add('active-user');
+    }
+
+    function formatDate(date) {
+      const options = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+      return new Intl.DateTimeFormat('en-US', options).format(date);
+    }
+
+    function addMessageToColumn(from, to, message, timestamp, column) {
+      const selfLabel = from === socket.id ? 'Self' : from;
+      const messageItem = document.createElement('li');
+      messageItem.textContent = `[${formatDate(timestamp)}] ${selfLabel}: ${message}`;
+      column.appendChild(messageItem);
+      column.scrollTop = column.scrollHeight;
+    }
+
+    function sendPublicMessage() {
+      const message = document.getElementById('publicMsg').value;
+      socket.emit('public message', message);
+    }
+
+    function sendPrivateMessage() {
+      if (!currentRecipient) {
+        alert('Please select a user from the user list.');
+        return;
+      }
+      const message = document.getElementById('privateMsg').value;
+      const timestamp = new Date();
+      socket.emit('private message', { recipientId: currentRecipient, message, timestamp });
+      const userKey = [socket.id, currentRecipient].sort().join("-");
+      console.log("Current userKey ", userKey);
+      let column = messageColumns[userKey];
+
+      if (!column) {
+        column = document.createElement("div");
+        column.classList.add("user-column");
+        column.innerHTML = `<h3>Chat with ${currentRecipient}</h3><ul class="messages"></ul>`;
+        document.getElementById("chatColumns").appendChild(column);
+        messageColumns[userKey] = column.querySelector(".messages");
+      }
+
+      addMessageToColumn(
+        socket.id,
+        currentRecipient,
+        message,
+        timestamp,
+        messageColumns[userKey]
+      );
+    }
+  </script>
+</body>
+
+</html>
