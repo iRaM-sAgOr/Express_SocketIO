@@ -1,12 +1,26 @@
 import { Server } from 'socket.io';
 import { config } from './config.js';
 import jwt from 'jsonwebtoken';
+import Redis from "ioredis";
+import { createAdapter } from "@socket.io/redis-adapter";
 
 const users = {};           // Object to hold connected users in the authenticated namespace
 const guestUsers = {};      // Object to hold connected users in the guest namespace
 
 export function initializeSocket(server) {
-  const io = new Server(server);
+  const pubClient = new Redis({
+    host: "localhost",
+    port: 6379,
+  });
+  const subClient = pubClient.duplicate();
+
+  const io = new Server(server, {
+    cors: {
+      origin: "*",
+    },
+  });
+  // Set the Redis adapter for Socket.IO
+  io.adapter(createAdapter(pubClient, subClient));
 
   // Authenticated namespace
   const authNamespace = io.of('/auth'); // Namespace for authenticated users

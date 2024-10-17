@@ -9,6 +9,10 @@ const server = http.createServer(app);
 
 app.use(express.static("public"));
 
+app.get("/url", (req, res) => {
+  res.send({ PORT: config.port, BASE_URL: config.base_url });
+});
+
 app.get("/generate-token", (req, res) => {
   const token = generateAuthToken();
 

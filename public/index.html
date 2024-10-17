@@ -160,6 +160,8 @@
   </div>
 
   <script>
+    const baseUrl = "http://localhost";
+    const port = "3001";
     let socket;
     let token;
     let currentRecipient = null;
@@ -167,7 +169,7 @@
 
     function connectToChat(authenticated) {
       if (authenticated) {
-        fetch('http://localhost:3001/generate-token', {
+        fetch(`${baseUrl}:${port}/generate-token`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         })
@@ -190,7 +192,7 @@
     }
 
     function connectSocket(namespace, auth) {
-      socket = io(`http://localhost:3001${namespace}`, { auth });
+      socket = io(`${baseUrl}:${port}${namespace}`, { auth });
 
       initializeSocketListeners();
 
